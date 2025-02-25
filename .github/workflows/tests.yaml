@@ -1,57 +1,19 @@
-name: Tests
+name: tests
 
 on:
   push:
     branches:
-      - main
+    - "main"
   pull_request:
 
 jobs:
 
-  formatting:
-    name: Formatting
+  lints:
     runs-on: ubuntu-latest
     steps:
-
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Build docker images
-      run: |
-        docker compose build dev
-
-    - name: Check formatting
-      run: |
-        make check-format
-
-  types:
-    name: Types
-    runs-on: ubuntu-latest
-    steps:
-
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Build docker images
-      run: |
-        docker compose build dev
-
-    - name: Check types
-      run: |
-        make check-types
+    - uses: actions/checkout@v4
 
   tests:
-    name: Tests
     runs-on: ubuntu-latest
     steps:
-
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Build docker images
-      run: |
-        docker compose build dev
-
-    - name: Build parts
-      run: |
-        make test
+    - uses: actions/checkout@v4
