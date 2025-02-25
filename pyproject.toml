@@ -1,0 +1,25 @@
+[project]
+name = "aergogen"
+version = "0.0.0"
+authors = [{name = "James Keal", email = "james@keal.au"}]
+requires-python = ">=3.11"
+
+dependencies = [
+  "discord.py",
+  "pydantic",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+  "black",
+  "isort",
+  "mypy",
+  "pip-tools",
+  "pytest",
+  "types-pyyaml",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
