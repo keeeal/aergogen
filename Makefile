@@ -1,8 +1,11 @@
 install:
-	pip install -r requirements.txt
+	pip install -e .
 
 install-dev:
-	pip install .[dev]
+	pip install -e .[dev]
+
+install-lock:
+	pip install -r requirements.txt
 
 run:
 	export DISCORD_TOKEN_FILE=secrets/discord_token; \
