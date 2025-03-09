@@ -6,11 +6,11 @@ from PIL.Image import Image
 from tqdm import tqdm
 
 
-def embed_string(string: str) -> Embed:
+def embed_string(string: str, icon: str = "⏳") -> Embed:
     embed = (
         Embed()
         .add_field(
-            name="⏳",
+            name=icon,
             value="",
         )
         .add_field(
@@ -21,11 +21,11 @@ def embed_string(string: str) -> Embed:
     return embed
 
 
-def embed_progress(progress: float) -> Embed:
+def embed_progress(progress: float, icon: str = "🚀") -> Embed:
     embed = (
         Embed()
         .add_field(
-            name="🚀",
+            name=icon,
             value="",
         )
         .add_field(

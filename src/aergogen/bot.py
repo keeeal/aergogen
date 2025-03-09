@@ -88,13 +88,19 @@ def model_thread(requests: Queue, responses: dict[UUID, Response]) -> None:
 
 
 class AergoGen(Bot):
-    def __init__(self, command_prefix: str, home_guild_id: int):
+    def __init__(
+        self,
+        command_prefix: str,
+        home_guild_id: int,
+        home_user_id: int,
+    ):
         intents = Intents.default()
         intents.message_content = True
         super().__init__(command_prefix, intents=intents)
         self.requests: Queue = Queue()
         self.responses: dict[UUID, Response] = {}
         self.home_guild_id = home_guild_id
+        self.home_user_id = home_user_id
 
         Thread(target=model_thread, args=(self.requests, self.responses)).start()
 
@@ -170,6 +176,14 @@ class Commands(Cog):
     @command(name="scrape", description="Scrape the images from each channel")
     async def scrape(self, interaction: Interaction) -> None:
         await interaction.response.defer(thinking=True, ephemeral=True)
+        if interaction.user.id != self.bot.home_user_id:
+            return await interaction.followup.send(
+                embed=embed_string(
+                    "I'm sorry, Dave. I'm afraid I can't do that.",
+                    icon="🛑",
+                )
+            )
+
         attachments = await self.bot.fetch_attachments()
 
         root = Path("data")

@@ -11,6 +11,7 @@ from yaml import safe_dump, safe_load
 class BotConfig(BaseModel):
     command_prefix: str = "/"
     home_guild_id: int = -1
+    home_user_id: int = -1
 
 
 class Config(BaseModel):
