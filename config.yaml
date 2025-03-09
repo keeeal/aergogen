@@ -1,2 +1,3 @@
 bot:
-  command_prefix: '!'
+  command_prefix: /
+  home_guild_id: 602691391864176640
