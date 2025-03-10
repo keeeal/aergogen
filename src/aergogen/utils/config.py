@@ -12,6 +12,7 @@ class BotConfig(BaseModel):
     command_prefix: str = "/"
     home_guild_id: int = -1
     home_user_id: int = -1
+    num_threads: int = -1
 
 
 class Config(BaseModel):

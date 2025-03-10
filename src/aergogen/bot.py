@@ -1,15 +1,23 @@
 import uuid
-from asyncio import sleep
+from asyncio import gather, sleep
+from enum import StrEnum
 from pathlib import Path
 from queue import Queue
 from threading import Thread
 from typing import Any, Optional
 from uuid import UUID
 
-from diffusers.pipelines import DiffusionPipeline, ImagePipelineOutput
+import torch
+from diffusers.pipelines import (
+    DiffusionPipeline,
+    ImagePipelineOutput,
+    StableDiffusionXLPipeline,
+)
 from discord import Attachment, CategoryChannel, Intents, Interaction
 from discord.app_commands import command, describe
+from discord.enums import ButtonStyle, InteractionType
 from discord.ext.commands import Bot, Cog
+from discord.ui import Button, View
 from PIL.Image import Image
 from pydantic import BaseModel, ConfigDict, model_validator
 from torch import Tensor
@@ -54,37 +62,61 @@ class Response(Unique):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     progress: float = 0.0
     image: Optional[Image] = None
+    cancelled: bool = False
 
 
-def model_thread(requests: Queue, responses: dict[UUID, Response]) -> None:
-    pipeline = DiffusionPipeline.from_pretrained("RunDiffusion/Juggernaut-XL-v8")
-    pipeline.load_lora_weights("assets/aergo.safetensors")
+def model_thread(
+    requests: Queue,
+    cancellations: dict[UUID, bool],
+    responses: dict[UUID, Response],
+) -> None:
+    pipeline: StableDiffusionXLPipeline = DiffusionPipeline.from_pretrained(
+        "RunDiffusion/Juggernaut-XL-v8"
+    )
+    pipeline.load_lora_weights("assets/hexix.safetensors")
     responses[MODEL_LOADED_UUID] = Response(progress=1.0)
 
     def progress_callback(
-        pipeline: DiffusionPipeline,
+        pipeline: StableDiffusionXLPipeline,
         step: int,
         time: Tensor,
         data: dict[str, Any],
     ) -> dict[str, Any]:
+        if cancellations.pop(request.id, False):
+            LOGGER.info(f"Cancelled: {request.prompt}")
+            pipeline._interrupt = True
         responses[request.id] = Response(
-            progress=(step + 1) / request.num_inference_steps
+            progress=(step + 1) / request.num_inference_steps,
+            cancelled=pipeline.interrupt,
         )
         return data
 
-    while True:
-        request: Request = requests.get()
+    while request := Request.model_validate(requests.get()):
+        if cancellations.pop(request.id, False):
+            LOGGER.info(f"Cancelled: {request.prompt}")
+            responses[request.id] = Response(cancelled=True)
+            requests.task_done()
+            continue
+
         LOGGER.info(f"Processing: {request.prompt}")
         responses[request.id] = Response(progress=0.0)
         output: ImagePipelineOutput = pipeline(
-            prompt=f"{request.prompt}, detailed, 8k",
+            prompt=request.prompt,
             num_inference_steps=request.num_inference_steps,
             width=request.width,
             height=request.height,
             callback_on_step_end=progress_callback,
         )
-        responses[request.id] = Response(image=output.images[0])
+        responses[request.id] = Response(
+            progress=1.0,
+            image=output.images[0],
+            cancelled=pipeline.interrupt,
+        )
         requests.task_done()
+
+
+class Action(StrEnum):
+    CANCEL = "cancel"
 
 
 class AergoGen(Bot):
@@ -93,16 +125,25 @@ class AergoGen(Bot):
         command_prefix: str,
         home_guild_id: int,
         home_user_id: int,
+        num_threads: int,
     ):
         intents = Intents.default()
         intents.message_content = True
         super().__init__(command_prefix, intents=intents)
         self.requests: Queue = Queue()
+        self.cancellations: dict[UUID, bool] = {}
         self.responses: dict[UUID, Response] = {}
         self.home_guild_id = home_guild_id
         self.home_user_id = home_user_id
 
-        Thread(target=model_thread, args=(self.requests, self.responses)).start()
+        if num_threads > 0:
+            LOGGER.info(f"Setting num threads to {num_threads}")
+            torch.set_num_threads(num_threads)
+
+        Thread(
+            target=model_thread,
+            args=(self.requests, self.cancellations, self.responses),
+        ).start()
 
     async def on_ready(self) -> None:
         LOGGER.info(f"Logged in as {self.user}")
@@ -117,6 +158,26 @@ class AergoGen(Bot):
             continue
 
         LOGGER.info("Model loaded")
+
+    async def on_interaction(self, interaction: Interaction) -> None:
+        if not interaction.type == InteractionType.component:
+            return
+        if not interaction.data or not interaction.message:
+            return
+
+        data = dict(interaction.data)
+        custom_id = str(data["custom_id"])
+        request_id, action = custom_id.split("/")
+        request_id = UUID(request_id)
+        action = Action(action)
+
+        if action == Action.CANCEL:
+            self.cancellations[request_id] = True
+            await interaction.message.delete()
+            return await interaction.response.send_message(
+                embed=embed_string("Gen cancelled", icon="🗑️"),
+                ephemeral=True,
+            )
 
     def submit_request(self, request: Request) -> UUID:
         LOGGER.info(f"Request: {request.prompt}")
@@ -148,6 +209,18 @@ class AergoGen(Bot):
                     attachments[category_name][channel.name].append(attachment)
 
         return attachments
+
+
+class Buttons(View):
+    def __init__(self, request_id: UUID) -> None:
+        super().__init__(timeout=None)
+        self.add_item(
+            Button(
+                label=Action.CANCEL.value,
+                custom_id=f"{request_id}/{Action.CANCEL.value}",
+                style=ButtonStyle.grey,
+            )
+        )
 
 
 class Commands(Cog):
@@ -201,24 +274,36 @@ class Commands(Cog):
             concurrency=8,
         )
 
-        await interaction.followup.send(embed=embed_string("Done!"))
+        await interaction.followup.send(embed=embed_string("Done!", icon="✅"))
 
     @command(name="gen", description="Generate an image from a prompt")
     @describe(prompt="eg: aergo man eating a dominos pizza")
     async def gen(self, interaction: Interaction, prompt: str) -> None:
         request_id = self.bot.submit_request(Request(prompt=prompt))
         callback = await interaction.response.send_message(
-            embed=embed_string(f'In queue: `"{prompt}"`')
+            embed=embed_string(f"In queue...", prompt=prompt),
+            view=Buttons(request_id),
         )
         message = await interaction.channel.fetch_message(callback.message_id)
 
         while True:
             response = self.bot.check_response(request_id)
-            if response:
-                if response.image:
-                    embed, file = embed_image(response.image, prompt)
-                    await message.delete()
-                    await message.channel.send(embed=embed, file=file)
-                    break
-                await message.edit(embed=embed_progress(response.progress))
-            await sleep(1)
+
+            if response is None:
+                await sleep(1)
+                continue
+
+            if response.cancelled:
+                break
+
+            if response.image:
+                embed, file = embed_image(response.image, prompt=prompt)
+                await gather(
+                    message.delete(),
+                    message.channel.send(embed=embed, file=file),
+                )
+                break
+
+            await message.edit(
+                embed=embed_progress(response.progress, prompt=prompt, icon="🚀")
+            )

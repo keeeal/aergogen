@@ -6,9 +6,14 @@ from PIL.Image import Image
 from tqdm import tqdm
 
 
-def embed_string(string: str, icon: str = "⏳") -> Embed:
+def embed_string(
+    string: str,
+    *,
+    prompt: Optional[str] = None,
+    icon: str = "⏳",
+) -> Embed:
     embed = (
-        Embed()
+        Embed(title=prompt)
         .add_field(
             name=icon,
             value="",
@@ -21,9 +26,14 @@ def embed_string(string: str, icon: str = "⏳") -> Embed:
     return embed
 
 
-def embed_progress(progress: float, icon: str = "🚀") -> Embed:
+def embed_progress(
+    progress: float,
+    *,
+    prompt: Optional[str] = None,
+    icon: str = "⏳",
+) -> Embed:
     embed = (
-        Embed()
+        Embed(title=prompt)
         .add_field(
             name=icon,
             value="",
@@ -43,23 +53,32 @@ def embed_progress(progress: float, icon: str = "🚀") -> Embed:
     return embed
 
 
-def embed_image(image: Image, prompt: Optional[str] = None) -> tuple[Embed, File]:
+def embed_image(
+    image: Image,
+    *,
+    prompt: Optional[str] = None,
+) -> tuple[Embed, File]:
     with BytesIO() as buffer:
         image.save(buffer, format="PNG")
         buffer.seek(0)
         file = File(buffer, filename="image.png")
 
-    embed = Embed(description=prompt)
+    embed = Embed(title=prompt)
     embed.set_image(url="attachment://image.png")
     return embed, file
 
 
-def embed_counts(counts: dict[str, int], title: Optional[str] = None) -> Embed:
+def embed_counts(
+    counts: dict[str, int],
+    *,
+    title: Optional[str] = None,
+    total_per_channel: int = 50,
+) -> Embed:
     embed = Embed(
         title=f"{title or 'total'}\n".upper()
         + tqdm.format_meter(
-            n=sum(min(count, 50) for count in counts.values()),
-            total=50 * len(counts),
+            n=sum(min(count, total_per_channel) for count in counts.values()),
+            total=total_per_channel * len(counts),
             elapsed=0.0,
             bar_format="`[{bar}] {percentage:.0f}%`",
             ascii="-#",
@@ -70,10 +89,10 @@ def embed_counts(counts: dict[str, int], title: Optional[str] = None) -> Embed:
         embed.add_field(
             name=channel,
             value=tqdm.format_meter(
-                n=min(count, 50),
-                total=50,
+                n=min(count, total_per_channel),
+                total=total_per_channel,
                 elapsed=0.0,
-                bar_format=f"`[{{bar}}] {count}/50`",
+                bar_format=f"`[{{bar}}] {count}/{total_per_channel}`",
                 ascii="-#",
                 ncols=35,
             ),
