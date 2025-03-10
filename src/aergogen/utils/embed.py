@@ -10,14 +10,9 @@ def embed_string(
     string: str,
     *,
     prompt: Optional[str] = None,
-    icon: str = "⏳",
 ) -> Embed:
     embed = (
         Embed(title=prompt)
-        .add_field(
-            name=icon,
-            value="",
-        )
         .add_field(
             name="",
             value=string,
@@ -30,14 +25,9 @@ def embed_progress(
     progress: float,
     *,
     prompt: Optional[str] = None,
-    icon: str = "⏳",
 ) -> Embed:
     embed = (
         Embed(title=prompt)
-        .add_field(
-            name=icon,
-            value="",
-        )
         .add_field(
             name="",
             value=tqdm.format_meter(

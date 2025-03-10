@@ -53,9 +53,9 @@ class Unique(BaseModel):
 
 class Request(Unique):
     prompt: str
-    num_inference_steps: int = 8
-    width: int = 1024
-    height: int = 1024
+    num_inference_steps: int = 2
+    width: int = 512
+    height: int = 512
 
 
 class Response(Unique):
@@ -175,7 +175,7 @@ class AergoGen(Bot):
             self.cancellations[request_id] = True
             await interaction.message.delete()
             return await interaction.response.send_message(
-                embed=embed_string("Gen cancelled", icon="🗑️"),
+                embed=embed_string("🗑️ -- Gen cancelled"),
                 ephemeral=True,
             )
 
@@ -252,8 +252,7 @@ class Commands(Cog):
         if interaction.user.id != self.bot.home_user_id:
             return await interaction.followup.send(
                 embed=embed_string(
-                    "I'm sorry, Dave. I'm afraid I can't do that.",
-                    icon="🛑",
+                    "🛑 -- I'm sorry, Dave. I'm afraid I can't do that.",
                 )
             )
 
@@ -274,14 +273,14 @@ class Commands(Cog):
             concurrency=8,
         )
 
-        await interaction.followup.send(embed=embed_string("Done!", icon="✅"))
+        await interaction.followup.send(embed=embed_string("✅ -- Done!"))
 
     @command(name="gen", description="Generate an image from a prompt")
     @describe(prompt="eg: aergo man eating a dominos pizza")
     async def gen(self, interaction: Interaction, prompt: str) -> None:
         request_id = self.bot.submit_request(Request(prompt=prompt))
         callback = await interaction.response.send_message(
-            embed=embed_string(f"In queue...", prompt=prompt),
+            embed=embed_string(f"⏳ -- In queue...", prompt=prompt),
             view=Buttons(request_id),
         )
         message = await interaction.channel.fetch_message(callback.message_id)
@@ -298,12 +297,9 @@ class Commands(Cog):
 
             if response.image:
                 embed, file = embed_image(response.image, prompt=prompt)
-                await gather(
-                    message.delete(),
-                    message.channel.send(embed=embed, file=file),
-                )
+                await message.edit(embed=embed, attachments=[file], view=None)
                 break
 
             await message.edit(
-                embed=embed_progress(response.progress, prompt=prompt, icon="🚀")
+                embed=embed_progress(response.progress, prompt=prompt)
             )
